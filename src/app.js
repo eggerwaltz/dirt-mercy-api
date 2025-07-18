@@ -1,3 +1,4 @@
+// src/app.js
 const express = require('express');
 const cors = require('cors');
 const { fetchAllPosts } = require('./services/wordpress.service');
@@ -12,10 +13,8 @@ app.get('/', (req, res) => {
   res.send('API is running!');
 });
 
-// Helper to extract categories from raw WP post object
+// Extract categories from embedded terms
 function extractCategories(post) {
-  // Adjust this depending on your WP response shape
-  // Example assumes categories are in _embedded['wp:term'] and type 'category'
   if (
     post._embedded &&
     Array.isArray(post._embedded['wp:term'])
@@ -29,15 +28,12 @@ function extractCategories(post) {
   return ['Uncategorized'];
 }
 
-// Helper to get featured image URL from WP post object
+// Get featured image URL from embedded media
 function getFeaturedImage(post) {
-  if (post._embedded && post._embedded['wp:featuredmedia'] && post._embedded['wp:featuredmedia'][0]) {
-    return post._embedded['wp:featuredmedia'][0].source_url || '';
-  }
-  return '';
+  return post._embedded?.['wp:featuredmedia']?.[0]?.source_url || '';
 }
 
-// Your existing general posts API
+// General posts API
 app.get('/api/posts', async (req, res) => {
   try {
     const data = await fetchAllPosts();
@@ -48,27 +44,24 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 
-// New route specifically for Reader2 enriched data
+// Reader2-specific route with full content, image, and categories
 app.get('/api/posts-reader2', async (req, res) => {
   try {
     const data = await fetchAllPosts();
+    const reader2Raw = data.reader2?.posts || [];
 
-    // Make sure reader2 posts exist
-    const reader2PostsRaw = data.reader2?.posts || [];
-
-    // Map over reader2 posts to add full content, categories, featured image
-    const reader2Posts = reader2PostsRaw.map(post => ({
+    const reader2Enriched = reader2Raw.map(post => ({
       id: post.id,
       title: post.title,
       excerpt: post.excerpt,
-      content: post.content,  // full content, e.g. post.content.rendered
+      content: post.content,
       link: post.link,
-      category: extractCategories(post).join(', '), // join categories into a string
+      category: extractCategories(post).join(', '),
       image: getFeaturedImage(post),
       date: post.date
     }));
 
-    res.json({ reader2: { posts: reader2Posts } });
+    res.json({ reader2: { posts: reader2Enriched } });
   } catch (error) {
     console.error('Reader2 API Error:', error);
     res.status(500).json({ error: error.message });
