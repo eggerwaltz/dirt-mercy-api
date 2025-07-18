@@ -27,7 +27,7 @@ async function fetchWithTimeout(url) {
     }
 }
 
-// Utility: Extract multiple categories
+// Utility: Extract multiple categories as uppercase strings
 function extractCategories(post) {
     if (
         post._embedded &&
@@ -35,7 +35,7 @@ function extractCategories(post) {
     ) {
         return post._embedded['wp:term']
             .flat()
-            .filter(term => term.taxonomy === 'category')
+            .filter(term => term.taxonomy === 'category' && typeof term.name === 'string')
             .map(term => term.name.toUpperCase());
     }
     return ['UNCATEGORIZED'];
@@ -52,13 +52,16 @@ async function processPost(post, fetchFull = false) {
             .replace(/<[^>]*>/g, '')
             .substring(0, 200) + '...';
 
+        const categories = extractCategories(post);
+        const categoryName = categories.length > 0 ? categories[0] : 'UNCATEGORIZED';
+
         return {
             id: post.id,
             title: post.title.rendered.replace(/<[^>]*>/g, '').toUpperCase(),
             content: full.content.rendered,
             excerpt,
             image: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || 'default.jpg',
-            category: extractCategories(post),
+            category: categoryName,
             date: new Date(post.date).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
