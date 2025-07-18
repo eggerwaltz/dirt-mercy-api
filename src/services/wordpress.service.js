@@ -1,14 +1,12 @@
 const fetch = require('node-fetch');
 const NodeCache = require('node-cache');
 
-const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes cache
+const cache = new NodeCache({ stdTTL: 300 }); // 5 minutes
 const WP_BASE_URL = 'https://dirtmercy.com/est/wp-json/wp/v2';
 
-// Utility: Timeout-enabled fetch
 async function fetchWithTimeout(url) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
-
     try {
         const response = await fetch(url, {
             signal: controller.signal,
@@ -16,23 +14,18 @@ async function fetchWithTimeout(url) {
                 'User-Agent': 'DIRT MERCY Reader/1.0'
             }
         });
-
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-
         return await response.json();
     } finally {
         clearTimeout(timeout);
     }
 }
 
-// Utility: Extract multiple categories as uppercase strings
+// ✅ Extract ALL categories as uppercase strings
 function extractCategories(post) {
-    if (
-        post._embedded &&
-        Array.isArray(post._embedded['wp:term'])
-    ) {
+    if (post._embedded && Array.isArray(post._embedded['wp:term'])) {
         return post._embedded['wp:term']
             .flat()
             .filter(term => term.taxonomy === 'category' && typeof term.name === 'string')
@@ -41,7 +34,7 @@ function extractCategories(post) {
     return ['UNCATEGORIZED'];
 }
 
-// Utility: Build a consistent post object
+// ✅ Full post processor
 async function processPost(post, fetchFull = false) {
     try {
         const full = fetchFull
@@ -53,15 +46,14 @@ async function processPost(post, fetchFull = false) {
             .substring(0, 200) + '...';
 
         const categories = extractCategories(post);
-        const categoryName = categories.length > 0 ? categories[0] : 'UNCATEGORIZED';
 
         return {
             id: post.id,
             title: post.title.rendered.replace(/<[^>]*>/g, '').toUpperCase(),
-            content: full.content.rendered,
+            content: full.content?.rendered || '',
             excerpt,
             image: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || 'default.jpg',
-            category: categoryName,
+            categories, // ✅ Array of strings
             date: new Date(post.date).toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
@@ -75,33 +67,17 @@ async function processPost(post, fetchFull = false) {
     }
 }
 
-// Main export: Fetch and cache all readers’ posts
 async function fetchAllPosts() {
     const cachedData = cache.get('posts');
-    if (cachedData) {
-        return cachedData;
-    }
+    if (cachedData) return cachedData;
 
     try {
-        const latestPosts = await fetchWithTimeout(
-            `${WP_BASE_URL}/posts?_embed&per_page=22&order=desc&orderby=date`
-        );
+        const latestPosts = await fetchWithTimeout(`${WP_BASE_URL}/posts?_embed&per_page=22&order=desc&orderby=date`);
+        const oldestPosts = await fetchWithTimeout(`${WP_BASE_URL}/posts?_embed&per_page=12&order=asc&orderby=date`);
 
-        const oldestPosts = await fetchWithTimeout(
-            `${WP_BASE_URL}/posts?_embed&per_page=12&order=asc&orderby=date`
-        );
-
-        const reader1 = await Promise.all(
-            latestPosts.slice(0, 10).map(post => processPost(post, true))
-        );
-
-        const reader2 = await Promise.all(
-            latestPosts.slice(0, 10).map(post => processPost(post, true))
-        );
-
-        const reader3 = await Promise.all(
-            oldestPosts.map(post => processPost(post, true))
-        );
+        const reader1 = await Promise.all(latestPosts.slice(0, 10).map(post => processPost(post, true)));
+        const reader2 = await Promise.all(latestPosts.slice(0, 10).map(post => processPost(post, true)));
+        const reader3 = await Promise.all(oldestPosts.map(post => processPost(post, true)));
 
         const result = {
             reader1: { posts: reader1 },
@@ -111,7 +87,6 @@ async function fetchAllPosts() {
         };
 
         cache.set('posts', result);
-
         return result;
     } catch (error) {
         console.error('Error fetching posts:', error);
