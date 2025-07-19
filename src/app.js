@@ -1,4 +1,3 @@
-// src/app.js
 const express = require('express');
 const cors = require('cors');
 const { fetchAllPosts } = require('./services/wordpress.service');
@@ -13,7 +12,7 @@ app.get('/', (req, res) => {
   res.send('API is running!');
 });
 
-// All posts route (Reader1, Reader2, Reader3)
+// Reader1, Reader2, Reader3 route
 app.get('/api/posts', async (req, res) => {
   try {
     const data = await fetchAllPosts();
@@ -24,13 +23,35 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 
-// Reader2-specific endpoint — no need to reprocess categories/images
+// Reader2-specific: selects 3rd newest as featured + full post list
 app.get('/api/posts-reader2', async (req, res) => {
   try {
     const data = await fetchAllPosts();
-    const reader2 = data.reader2?.posts || [];
+    const allPosts = data.reader2?.posts || [];
 
-    res.json({ reader2: { posts: reader2 } });
+    const featuredIndex = 2; // 3rd newest post
+    const featured = allPosts[featuredIndex] || null;
+
+    // Format categories as uppercase array
+    const formatPost = post => ({
+      id: post.id,
+      title: post.title,
+      excerpt: post.excerpt,
+      content: post.content,
+      link: post.link,
+      categories: Array.isArray(post.category)
+        ? post.category.map(cat => cat.toUpperCase?.() || cat)
+        : [post.category?.toUpperCase?.() || 'UNCATEGORIZED'],
+      image: post.image,
+      date: post.date
+    });
+
+    res.json({
+      reader2: {
+        featured: featured ? formatPost(featured) : null,
+        posts: allPosts.map(formatPost)
+      }
+    });
   } catch (error) {
     console.error('Reader2 API Error:', error);
     res.status(500).json({ error: error.message });
