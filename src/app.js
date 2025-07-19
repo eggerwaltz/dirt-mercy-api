@@ -1,3 +1,4 @@
+// src/app.js
 const express = require('express');
 const cors = require('cors');
 const { fetchAllPosts } = require('./services/wordpress.service');
@@ -7,12 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Root route
+// Root
 app.get('/', (req, res) => {
   res.send('API is running!');
 });
 
-// Reader1, Reader2, Reader3 route
+// All readers (1, 2, 3)
 app.get('/api/posts', async (req, res) => {
   try {
     const data = await fetchAllPosts();
@@ -23,33 +24,45 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 
-// Reader2-specific: selects 3rd newest as featured + full post list
+// Reader2-only route — mimics PHP logic
 app.get('/api/posts-reader2', async (req, res) => {
   try {
     const data = await fetchAllPosts();
     const allPosts = data.reader2?.posts || [];
 
-    const featuredIndex = 2; // 3rd newest post
-    const featured = allPosts[featuredIndex] || null;
+    // Select 3rd newest post as featured
+    const featured = allPosts.length >= 3 ? allPosts[2] : null;
 
-    // Format categories as uppercase array
+    // Gather unique categories from all posts
+    const categories = {};
+    allPosts.forEach(post => {
+      const cats = Array.isArray(post.categories) ? post.categories : [post.category];
+      cats.forEach((cat, index) => {
+        const clean = cat?.toUpperCase?.() || 'UNCATEGORIZED';
+        if (!Object.values(categories).includes(clean)) {
+          const syntheticId = `${clean}-${index}`;
+          categories[syntheticId] = clean;
+        }
+      });
+    });
+
+    // Normalize post format
     const formatPost = post => ({
       id: post.id,
       title: post.title,
       excerpt: post.excerpt,
       content: post.content,
       link: post.link,
-      categories: Array.isArray(post.category)
-        ? post.category.map(cat => cat.toUpperCase?.() || cat)
-        : [post.category?.toUpperCase?.() || 'UNCATEGORIZED'],
+      categories: Array.isArray(post.categories) ? post.categories : [post.category],
       image: post.image,
       date: post.date
     });
 
     res.json({
       reader2: {
+        posts: allPosts.map(formatPost),
         featured: featured ? formatPost(featured) : null,
-        posts: allPosts.map(formatPost)
+        categories
       }
     });
   } catch (error) {
